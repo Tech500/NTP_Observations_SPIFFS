@@ -1,5 +1,5 @@
 # NTP_Observations_SPIFFS
-ESP8266EX Internet Weather Datalogger and Dynamic Web Server with NTP; no RTC!
+ESP8266 Internet Weather Datalogger and Dynamic Web Server with NTP; no RTC!
 
 Current Features "NTP_Oberservations_SPIFFS.ino".
 
