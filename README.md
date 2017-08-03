@@ -30,4 +30,5 @@ Features:
 Server is a WeMOS D1 R2, Model 2.1.0 Development Board -- purchased on Ebay for ~ $ 9.00 and BME280 breakout board and DS3231 breakout board ~ $ 6.00; both are required for project. Sensor is located indoors, currently.
 
 Project web page:  http://tinyurl.com/Observations-weather
+New graphs feature:  http://tinyurl.com/Four-graphs
 
