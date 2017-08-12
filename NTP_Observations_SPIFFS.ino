@@ -1234,7 +1234,7 @@ void setClockWithNTP()
 
      int cb = udp.parsePacket();
      
-     if (!cb) 
+     if (cb != 48) 
      {
           Serial.println("no packet yet");
 
