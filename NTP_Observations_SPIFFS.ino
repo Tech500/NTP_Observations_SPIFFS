@@ -2,16 +2,16 @@
 //
 //                       ESP8266 --Internet Weather Datalogger and Dynamic Web Server 
 //
-//                       "NTP_Observations_SPIFFS.ino"    07/29/2017  @ 09:35 EST --ab9nq.william--at-gmail.com
+//                       "NTP_Observations_SPIFFS.ino"    08/08/2017  @ 23:31 EST --ab9nq.william--at-gmail.com
 //
 //                       https://forum.arduino.cc/index.php?topic=466867.0     
 //
-//                       Supports WeMos D1 R2 Revison 2.1.0,   --ESP8266EX Based Developement Board
+//                       Supports WeMos D1 R2 Revison 2.1.0 and RobotDyn WiFi D1 R2 32 MB   --ESP8266EX Baseds Developement Board
 //
 //                       https://www.wemos.cc/product/d1.html 
 //
 //
-//                       listFiles and readFile by martinayotte of ESP8266 Community Forum
+//                       listFiles and readFile by martinayotte of ESP8266 Community Forum 
 //
 //                       NTP useage with Timezones by zoomx of the Arduino.cc Forum
 //
@@ -20,6 +20,7 @@
 //                       Project is Open-Source, uses one Barometric Pressure sensor, BME280.
 //                       RTC is software and NTP synchronized
 //   Upload
+//   logging has priority folder
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -80,7 +81,7 @@ unsigned long delayTime;
 
 #define SEALEVELPRESSURE_HPA (1013.25)   // Average millbars at Sea Level.  Check local weather service office.
 
-RTC_Millis Clock;
+RTC_Millis Clock;   
 
 bool Century = false;
 bool h12;
@@ -88,7 +89,7 @@ bool PM;
 bool AcquisitionDone = false;
 
 int year1, month1, date1, hour1, minute1, second1;   //the original year, month ... are in conflict with TimeLib
-byte DoW, dayofWeek, dayOfTheWeek;
+byte dayofWeek;
 
 //use I2Cscanner to find LCD display address, in this case 3F   //https://github.com/todbot/arduino-i2c-scanner/
 //LiquidCrystal_I2C lcd(0x3F,16,2);  // set the LCD address to 0x3F for a 16 chars and 2 line display
@@ -114,8 +115,6 @@ String lastUpdate;
 String SMonth, SDay, SYear, SHour, SMin, SSec;
 
 String fileRead;
-
-int fileDownload;   //File download status; 1 = file download has started, 0 = file has finished downloading
 
 char MyBuffer[13];
 
@@ -174,7 +173,6 @@ WiFiClient client;
 //edit ThingSpeak.com data here...
 unsigned long myChannelNumber = YourChannelNumber;
 const char * myWriteAPIKey = "YourAPIkey";
-
 ////////////////********************************************************************************
 ////////////////*******************************SETUP********************************************
 ////////////////********************************************************************************
@@ -279,7 +277,7 @@ void loop()
      
      wdt_reset();
      
-     //Serial.println(dayOfTheWeek);  //Check to see which dayOfTheWeek starts is Saturday.  Saturday is 6 dayOfTheWeek on DS3231.
+     //Serial.println(dayofWeek);  //Check to see which dayofWeek starts is Saturday.  Saturday is 6 dayofWeek on DS3231.
 
      //Collect  "LOG.TXT" Data for one day; do it early (before 00:00:00) so day of week still equals 6.
      if (((hour1) == 23 )  &&
@@ -289,11 +287,9 @@ void loop()
           newDay();
      }
      
-       
-     
-     //Serial.println(dayOfTheWeek);  //Check to see which dayofWeek starts is Saturday.  Saturday is 6 dayofWeek on DS3231.
+     //Serial.println(dayofWeek);  //Check to see which dayofWeek starts is Saturday.  Saturday is 6 dayofWeek on DS3231.
 
-      //Write Data at 15 minute interval
+     //Write Data at 15 minute interval
 
      if ((((minute1) == 0)||
                ((minute1) == 15)||
@@ -302,9 +298,9 @@ void loop()
                && ((second1) == 0))
      {
 
-
          if (AcquisitionDone == false) 
          {
+              
            lastUpdate = dtStamp;   //store dtstamp for use on dynamic web page
            getWeatherData();
            updateDifference();  //Get Barometric Pressure difference
@@ -313,6 +309,7 @@ void loop()
            speak();
            AcquisitionDone = true;
            setClockWithNTP();
+           
          }
      }
      else
@@ -327,117 +324,97 @@ void loop()
 void logtoSD()   //Output to SPIFFS Card every fifthteen minutes
 {
 
-     //getWeatherData();
+     // Open a "log.txt" for appended writing
+     File log = SPIFFS.open("/LOG.TXT", "a");
 
-     if(fileDownload == 1)   //File download has started
+     if (!log)
      {
-          exit;   //Skip logging this time --file download in progress
+          Serial.println("file open failed");
+     }
+
+     //log.print(id);
+     //log.print(" , ");
+     log.print(dtStamp) + " EST";
+     log.print(" , ");
+     log.print("Humidity:  ");
+     log.print(bme_humidity);
+     log.print(" % , ");
+     log.print("Dew Point:  ");
+     log.print(dew,1);
+     log.print(" F. , ");
+     log.print(fahrenheit);
+     log.print("  F. , ");
+     // Reading temperature or humidity takes about 250 milliseconds!
+     // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
+     log.print("Heat Index:  ");
+     log.print(heat_index);
+     log.print(" F. ");
+     log.print(" , ");
+     log.print(currentPressure, 3);   //Inches of Mecury
+     log.print(" in. Hg. ");
+     log.print(" , ");
+
+     if (pastPressure == currentPressure)
+     {
+          log.print("0.000");
+          log.print(" Difference ");
+          log.print(" ,");
      }
      else
      {
+          log.print((difference),3);
+          log.print(" Difference ");
+          log.print(", ");
+     }
 
-          fileDownload = 1;
+     log.print(millibars, 2);  //Convert hPA to millibars  
+     log.print(" millibars ");
+     log.print(" , ");
+     log.print(atm, 3);   
+     log.print(" Atm ");
+     log.print(" , ");
+     log.print(bme_altitude, 1);  //Convert meters to Feet
+     log.print(" Ft. ");
+     log.println();
+     //Increment Record ID number
+     //id++;
+     Serial.print("\n");
+     Serial.println("Data written to log  " + dtStamp);
+     Serial.print("\n");
+     
+     log.close();
 
-          // Open a "log.txt" for appended writing
-          File log = SPIFFS.open("/LOG.TXT", "a");
+     pastPressure = currentPressure;
 
-          if (!log)
+     if(abs(difference) >= .020)   //After testing and observations of Data; raised from .010 to .020 inches of Mecury
+     {
+          // Open a "Differ.txt" for appended writing --records Barometric Pressure change difference and time stamps
+          File diff = SPIFFS.open("/DIFFER.TXT", "a");
+
+          if (!diff)
           {
                Serial.println("file open failed");
           }
 
-          //log.print(id);
-          //log.print(" , ");
-          log.print(dtStamp) + " EST";
-          log.print(" , ");
-          log.print("Humidity:  ");
-          log.print(bme_humidity);
-          log.print(" % , ");
-          log.print("Dew Point:  ");
-          log.print(dew,1);
-          log.print(" F. , ");
-          log.print(fahrenheit);
-          log.print("  F. , ");
-          // Reading temperature or humidity takes about 250 milliseconds!
-          // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-          log.print("Heat Index:  ");
-          log.print(heat_index);
-          log.print(" F. ");
-          log.print(" , ");
-          log.print(currentPressure, 3);   //Inches of Mecury
-          log.print(" in. Hg. ");
-          log.print(" , ");
+          Serial.println("\n");
+          Serial.println("Difference greater than .020 inches of Mecury ,  ");
+          Serial.print(difference, 3);
+          Serial.println("\n");
+          Serial.print("  ,");
+          Serial.print(dtStamp);
+          Serial.println("");
 
-          if (pastPressure == currentPressure)
-          {
-               log.print("0.000");
-               log.print(" Difference ");
-               log.print(" ,");
-          }
-          else
-          {
-               log.print((difference),3);
-               log.print(" Difference ");
-               log.print(", ");
-          }
+          diff.println("");
+          diff.print("Difference greater than .020 inches of Mecury,  ");
+          diff.print(difference, 3);
+          diff.print("  ,");
+          diff.print(dtStamp);
+          diff.close();
 
-          log.print(millibars, 2);  //Convert hPA to millibars  
-          log.print(" millibars ");
-          log.print(" , ");
-          log.print(atm, 3);   
-          log.print(" Atm ");
-          log.print(" , ");
-          log.print(bme_altitude, 1);  //Convert meters to Feet
-          log.print(" Ft. ");
-          log.println();
-          //Increment Record ID number
-          //id++;
-          Serial.print("\n");
-          Serial.println("Data written to log  " + dtStamp);
-          Serial.print("\n");
-          
-          delay(1000);   //delay to prevent log entry twice
-
-          log.close();
-
-          pastPressure = currentPressure;
-
-          fileDownload = 0;
-
-          if(abs(difference) >= .020)   //After testing and observations of Data; raised from .010 to .020 inches of Mecury
-          {
-               // Open a "Differ.txt" for appended writing --records Barometric Pressure change difference and time stamps
-               File diff = SPIFFS.open("/DIFFER.TXT", "a");
-
-               if (!diff)
-               {
-                    Serial.println("file open failed");
-               }
-
-               Serial.println("\n");
-               Serial.println("Difference greater than .020 inches of Mecury ,  ");
-               Serial.print(difference, 3);
-               Serial.println("\n");
-               Serial.print("  ,");
-               Serial.print(dtStamp);
-               Serial.println("");
-
-               diff.println("");
-               diff.print("Difference greater than .020 inches of Mecury,  ");
-               diff.print(difference, 3);
-               diff.print("  ,");
-               diff.print(dtStamp);
-               diff.close();
-
-               beep(50);  //Duration of Sonalert tone
-
-
-
-          }
-
+          beep(50);  //Duration of Sonalert tone 
 
      }
-     listen();
+     
 }
 
 /*
@@ -470,289 +447,332 @@ void listen()   // Listen for client connection
 
      client = server.available();
 
-     fileDownload = 0;   //No file being downloaded
-
-     while(client.available())
+     // Disable listen function prior to writing data to log file 
+     if (!((((minute1) == 59)||
+               ((minute1) == 14)||
+               ((minute1) == 29)||
+               ((minute1) == 44))
+               && ((second1) > 50)))
      {
-          if (client)
+          
+          
+          while(client.available())
           {
-
-               // Process this request until it completes or times out.
-               // Note that this is explicitly limited to handling one request at a time!
-
-               // Clear the incoming data buffer and point to the beginning of it.
-               bufindex = 0;
-               memset(&buffer, 0, sizeof(buffer));
-
-               // Clear action and path strings.
-               memset(&action, 0, sizeof(action));
-               memset(&path,   0, sizeof(path));
-
-               // Set a timeout for reading all the incoming data.
-               unsigned long endtime = millis() + TIMEOUT_MS;
-
-               // Read all the incoming data until it can be parsed or the timeout expires.
-               bool parsed = false;
-
-               while (!parsed && (millis() < endtime) && (bufindex < BUFFER_SIZE))
+               if (client)
                {
 
-                    if (client.available())
+                    // Process this request until it completes or times out.
+                    // Note that this is explicitly limited to handling one request at a time!
+
+                    // Clear the incoming data buffer and point to the beginning of it.
+                    bufindex = 0;
+                    memset(&buffer, 0, sizeof(buffer));
+
+                    // Clear action and path strings.
+                    memset(&action, 0, sizeof(action));
+                    memset(&path,   0, sizeof(path));
+
+                    // Set a timeout for reading all the incoming data.
+                    unsigned long endtime = millis() + TIMEOUT_MS;
+
+                    // Read all the incoming data until it can be parsed or the timeout expires.
+                    bool parsed = false;
+
+                    while (!parsed && (millis() < endtime) && (bufindex < BUFFER_SIZE))
                     {
 
-                         buffer[bufindex++] = client.read();
+                         if (client.available())
+                         {
+
+                              buffer[bufindex++] = client.read();
+
+                         }
+
+                         parsed = parseRequest(buffer, bufindex, action, path);
 
                     }
 
-                    parsed = parseRequest(buffer, bufindex, action, path);
-
-               }
-
-               if(parsed)
-               {
-
-                    // Check the action to see if it was a GET request.
-                    if (strcmp(action, "GET") == 0)
+                    if(parsed)
                     {
 
-                         digitalWrite(online,HIGH);   //turn on online LED indicator
-
-                         String ip1String = "10.0.0.146";   //Host ip address
-                         String ip2String = client.remoteIP().toString();   //client remote IP address
-
-                         getDateTime();
-
-                         Serial.print("\n");
-                         Serial.println("Client connected:  " + dtStamp);
-                         Serial.print("Client IP:  ");
-                         Serial.println(ip2String);
-                         Serial.println(F("Processing request"));
-                         Serial.print(F("Action: "));
-                         Serial.println(action);
-                         Serial.print(F("Path: "));
-                         Serial.println(path);
-
-                         accessLog();   //log-on details for "GET" HTTP request
-
-
                          // Check the action to see if it was a GET request.
-                         if (strncmp(path, "/favicon.ico", 12) == 0)   // Respond with the path that was accessed.
-                         {
-                              char *filename = "/FAVICON.ICO";
-                              strcpy(MyBuffer, filename);
-
-                              // send a standard http response header
-                              client.println("HTTP/1.1 200 OK");
-                              client.println("Content-Type: image/x-icon");
-                              client.println();
-
-                              fileDownload = 1;   //File download has started
-
-                              wdt_reset();
-                              
-                              readFile();
-
-                         }
-                         // Check the action to see if it was a GET request.
-                         if (strncmp(path, "/Weather", 8) == 0)   // Respond with the path that was accessed.
+                         if (strcmp(action, "GET") == 0)
                          {
 
+                              digitalWrite(online,HIGH);   //turn on online LED indicator
 
-                              getWeatherData();
+                              String ip1String = "10.0.0.146";   //Host ip address
+                              String ip2String = client.remoteIP().toString();   //client remote IP address
 
-                              delay(200);
+                              getDateTime();
 
-                              fileDownload = 1;
+                              Serial.print("\n");
+                              Serial.println("Client connected:  " + dtStamp);
+                              Serial.print("Client IP:  ");
+                              Serial.println(ip2String);
+                              Serial.println(F("Processing request"));
+                              Serial.print(F("Action: "));
+                              Serial.println(action);
+                              Serial.print(F("Path: "));
+                              Serial.println(path);
 
-                              // First send the success response code.
-                              client.println("HTTP/1.1 200 OK");
-                              client.println("Content-Type: html");
-                              client.println("Connnection: close");
-                              client.println("Server: WEMOS D1 R2");
-                              // Send an empty line to signal start of body.
-                              client.println("");
-                              // Now send the response data.
-                              // output dynamic webpage
-                              client.println("<!DOCTYPE HTML>");
-                              client.println("<html>\r\n");
-                              client.println("<body>\r\n");
-                              client.println("<head><title>Weather Observations</title></head>");
-                              // add a meta refresh tag, so the browser pulls again every 15 seconds:
-                              //client.println("<meta http-equiv=\"refresh\" content=\"15\">");
-                              client.println("<h2>Treyburn Lakes</h2><br />");
-                              client.println("Indianapolis, IN 46239<br />");
+                              accessLog();   //log-on details for "GET" HTTP request
 
-                              if(lastUpdate != NULL)
+
+                              // Check the action to see if it was a GET request.
+                              if (strncmp(path, "/favicon.ico", 12) == 0)   // Respond with the path that was accessed.
                               {
-                                   client.println("Last Update:  ");
-                                   client.println(lastUpdate);
-                                   client.println(" EST <br />");
+                                   char *filename = "/FAVICON.ICO";
+                                   strcpy(MyBuffer, filename);
+
+                                   // send a standard http response header
+                                   client.println("HTTP/1.1 200 OK");
+                                   client.println("Content-Type: image/x-icon");
+                                   client.println();
+
+                                   wdt_reset();
+                                   
+                                   readFile();
+
                               }
-
-                              client.println("Humidity:  ");
-                              client.print(bme_humidity, 1);
-                              client.print(" %<br />");
-                              client.println("Dew point:  ");
-                              client.print(dew, 1);
-                              client.print(" F. <br />");
-                              client.println("Temperature:  ");
-                              client.print(fahrenheit, 1);
-                              client.print(" F.<br />");
-                              client.println("Heat Index:  ");
-                              client.print(heat_index);
-                              client.print(" F. <br />");
-                              client.println("Barometric Pressure:  ");
-                              client.print(currentPressure, 3);   //Inches of Mercury
-                              client.print(" in. Hg.<br />");
-
-                              if (pastPressure == currentPressure)
+                              // Check the action to see if it was a GET request.
+                              if (strncmp(path, "/Weather", 8) == 0)   // Respond with the path that was accessed.
                               {
-                                   client.println(difference, 3);
-                                   client.print(" in. Hg --Difference since last update <br />");
+
+
+                                   getWeatherData();
+
+                                   delay(200);
+
+                                   // First send the success response code.
+                                   client.println("HTTP/1.1 200 OK");
+                                   client.println("Content-Type: html");
+                                   client.println("Connnection: close");
+                                   client.println("Server: WEMOS D1 R2");
+                                   // Send an empty line to signal start of body.
+                                   client.println("");
+                                   // Now send the response data.
+                                   // output dynamic webpage
+                                   client.println("<!DOCTYPE HTML>");
+                                   client.println("<html>\r\n");
+                                   client.println("<body>\r\n");
+                                   client.println("<head><title>Weather Observations</title></head>");
+                                   // add a meta refresh tag, so the browser pulls again every 15 seconds:
+                                   //client.println("<meta http-equiv=\"refresh\" content=\"15\">");
+                                   client.println("<h2>Treyburn Lakes</h2><br />");
+                                   client.println("Indianapolis, IN 46239<br />");
+
+                                   if(lastUpdate != NULL)
+                                   {
+                                        client.println("Last Update:  ");
+                                        client.println(lastUpdate);
+                                        client.println(" EST <br />");
+                                   }
+
+                                   client.println("Humidity:  ");
+                                   client.print(bme_humidity, 1);
+                                   client.print(" %<br />");
+                                   client.println("Dew point:  ");
+                                   client.print(dew, 1);
+                                   client.print(" F. <br />");
+                                   client.println("Temperature:  ");
+                                   client.print(fahrenheit, 1);
+                                   client.print(" F.<br />");
+                                   client.println("Heat Index:  ");
+                                   client.print(heat_index);
+                                   client.print(" F. <br />");
+                                   client.println("Barometric Pressure:  ");
+                                   client.print(currentPressure, 3);   //Inches of Mercury
+                                   client.print(" in. Hg.<br />");
+
+                                   if (pastPressure == currentPressure)
+                                   {
+                                        client.println(difference, 3);
+                                        client.print(" in. Hg --Difference since last update <br />");
+                                   }
+                                   else
+                                   {
+                                        client.println(difference, 3);
+                                        client.print(" in. Hg --Difference since last update <br />");
+                                   }
+
+                                   client.println("Barometric Pressure:  ");
+                                   client.println(millibars, 1);   //Convert hPA to millbars
+                                   client.println(" mb.<br />");
+                                   client.println("Atmosphere:  ");
+                                   client.print(atm, 2);   
+                                   client.print(" Atm <br />");
+                                   client.println("Altitude:  ");
+                                   client.print(bme_altitude, 1);  //Convert meters to Feet
+                                   client.print(" Feet<br />");
+                                   //client.println("<br />");
+                                   client.println("<h2>Weather Observations</h2>");
+                                   client.println("<h3>" + dtStamp + "  EST </h3>\r\n");
+                                   ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+                                   //replace xxx.xxx.xxx.xxxx:yyyy with your Public IP and Forwarded port  --Caution --know the risk ---
+                                   ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+                                   client.println("<a href=http://xxx.xxx.xxx.xxxx:yyyy/LOG.TXT download>Current Week Observations</a><br />");
+                                   client.println("<br />\r\n");
+                                   client.println("<a href=http://xxx.xxx.xxx.xxxx:yyyy/SdBrowse >Collected Observations</a><br />");
+                                   client.println("<br />\r\n");
+                                   client.println("<a href=http://xxx.xxx.xxx.xxxx:yyyy/Graphs >Graphed Weather Observations</a><br />");
+                                   client.println("<br />\r\n");
+                                   client.println("<a href=http://xxx.xxx.xxx.xxxx:yyyy/README.TXT download>Server:  README</a><br />");
+                                   client.println("<br />\r\n");
+                                   //client.print("<H2>Client IP:  <H2>");
+                                   //client.print(client.remoteIP().toString().c_str());
+                                   client.println("<body />\r\n");
+                                   client.println("<br />\r\n");
+                                   client.println("</html>\r\n");
+
+                              }
+                              // Check the action to see if it was a GET request.
+                              else if (strcmp(path, "/SdBrowse") == 0)   // Respond with the path that was accessed.
+                              {
+                                   
+                                   // send a standard http response header
+                                   client.println("HTTP/1.1 200 OK");
+                                   client.println("Content-Type: text/html");
+                                   client.println();
+                                   client.println("<!DOCTYPE HTML>");
+                                   client.println("<html>\r\n");
+                                   client.println("<body>\r\n");
+                                   client.println("<head><title>SDBrowse</title><head />");
+                                   // print all the files, use a helper to keep it clean
+                                   client.println("<h2>Collected Observations</h2>");
+
+                                   //////////////// Code to listFiles from martinayotte of the "ESP8266 Community Forum" ///////////////
+                                   String str = String("<html><head></head>\r\n");
+
+                                   if (!SPIFFS.begin())
+                                   {
+                                        Serial.println("SPIFFS failed to mount !\r\n");
+                                   }
+                                   Dir dir = SPIFFS.openDir("/");
+                                   while (dir.next())
+                                   {
+                                        str += "<a href=\"";
+                                        str += dir.fileName();
+                                        str += "\">";
+                                        str += dir.fileName();
+                                        str += "</a>";
+                                        str += "    ";
+                                        str += dir.fileSize();
+                                        str += "<br>\r\n";
+                                   }
+                                   str += "</body></html>\r\n";
+
+                                   client.print(str);
+
+                                   ////////////////// End code by martinayotte //////////////////////////////////////////////////////
+                                   client.println("<br /><br />\r\n");
+                                   client.println("\n<a href=http://xxx.xxx.xxx.xxxx:yyyy/Weather    >Current Observations</a><br />");
+                                   client.println("<br />\r\n");
+                                   client.println("<body />\r\n");
+                                   client.println("<br />\r\n");
+                                   client.println("</html>\r\n");
+
+                              }
+                              // Check the action to see if it was a GET request.
+                              else if (strcmp(path, "/Graphs") == 0)   // Respond with the path that was accessed.
+                              {
+                                   
+                                   // First send the success response code.
+                                   client.println("HTTP/1.1 200 OK");
+                                   client.println("Content-Type: html");
+                                   client.println("Connnection: close");
+                                   client.println("Server: WEMOS D1 R2");
+                                   // Send an empty line to signal start of body.
+                                   client.println("");
+                                   // Now send the response data.
+                                   // output dynamic webpage
+                                   client.println("<!DOCTYPE HTML>");
+                                   client.println("<html>\r\n");
+                                   client.println("<body>\r\n");
+                                   client.println("<head><title>Graphed Weather Observations</title></head>");
+                                   // add a meta refresh tag, so the browser pulls again every 15 seconds:
+                                   //client.println("<meta http-equiv=\"refresh\" content=\"15\">");
+                                   client.println("<br />\r\n");
+                                   client.println("<h2>Graphed Weather Observations</h2><br />");
+                                   //client.println("<framset>\r\n");
+                                   client.println("<frameset rows='30%,70%' cols='33%,34%'>");
+                                   client.println("<iframe width='450' height='260' 'border: 1px solid #cccccc;' src='https://thingspeak.com/channels/290421/charts/1?bgcolor=%23ffffff&color=%23d62020&dynamic=true&results=60&timescale=15&title=Temperature&type=line&xaxis=Date&yaxis=Degrees'></iframe>");
+                                   client.println("<iframe width='450' height='260' 'border: 1px solid #cccccc;' src='https://thingspeak.com/channels/290421/charts/2?bgcolor=%23ffffff&color=%23d62020&dynamic=true&results=60&timescale=15&title=Humidity&type=line&xaxis=Date&yaxis=Humidity'></iframe>");
+                                   client.println("<p>");
+                                   client.println("<iframe width='450' height='260' 'border: 1px solid #cccccc;' src='https://thingspeak.com/channels/290421/charts/3?bgcolor=%23ffffff&color=%23d62020&dynamic=true&results=60&timescale=15&title=Barometric+Pressure&type=line&xaxis=Date&yaxis=Pressure'></iframe>");
+                                   client.println("<iframe width='450' height='260' 'border: 1px solid #cccccc;' src='https://thingspeak.com/channels/290421/charts/4?bgcolor=%23ffffff&color=%23d62020&dynamic=true&results=60&timescale=15&title=Dew+Point&type=line'></iframe>");
+                                   client.println("</frameset>");
+                                   client.println("<br /><br />\r\n");
+                                   client.println("\n<a href=http://xxx.xxx.xxx.xxxx:yyyy/Weather    >Current Observations</a><br />");
+                                   client.println("<br />\r\n");
+                                   client.println("</p>");
+                                   client.println("<body />\r\n");
+                                   client.println("<br />\r\n");
+                                   client.println("</html>\r\n");
+                                   
+                              }
+                              else if((strncmp(path, "/LOG", 4) == 0) ||  (strcmp(path, "/ACCESS.TXT") == 0) || (strcmp(path, "/DIFFER.TXT") == 0)|| (strcmp(path, "/SERVER.TXT") == 0) || (strcmp(path, "/README.TXT") == 0))     // Respond with the path that was accessed.
+                              {
+
+                                   char *filename;
+                                   char name;
+                                   strcpy( MyBuffer, path );
+                                   filename = &MyBuffer[1];
+
+                                   if ((strncmp(path, "/SYSTEM~1", 9) == 0) || (strncmp(path, "/ACCESS", 7) == 0))
+                                   {
+
+                                        client.println("HTTP/1.1 404 Not Found");
+                                        client.println("Content-Type: text/html");
+                                        client.println();
+                                        client.println("<h2>404</h2>\r\n");
+                                        delay(250);
+                                        client.println("<h2>File Not Found!</h2>\r\n");
+                                        client.println("<br /><br />\r\n");
+                                        client.println("\n<a href=http://xxx.xxx.xxx.xxxx:yyyy/SdBrowse    >Return to SPIFFS files list</a><br />");
+                                   }
+                                   else
+                                   {
+
+                                        client.println("HTTP/1.1 200 OK");
+                                        client.println("Content-Type: text/plain");
+                                        client.println("Content-Disposition: attachment");
+                                        client.println("Content-Length:");
+                                        client.println("Connnection: close");
+                                        client.println();
+
+
+                                        readFile();
+
+                                   }
+
+                              }
+                              // Check the action to see if it was a GET request.
+                              else  if(strncmp(path, "/zzzzzzz", 7) == 0)   //replace "zzzzzzz" with your choice.  Makes "ACCESS.TXT" a restricted file.
+                              {
+                                   //Restricted file:  "ACCESS.TXT."  Attempted access from "Server Files:" results in
+                                   //404 File not Found!
+
+                                   char *filename = "/ACCESS.TXT";
+                                   strcpy(MyBuffer, filename);
+
+                                   // send a standard http response header
+                                   client.println("HTTP/1.1 200 OK");
+                                   client.println("Content-Type: text/plain");
+                                   client.println("Content-Disposition: attachment");
+                                   //client.println("Content-Length:");
+                                   client.println();
+
+                                   wdt_reset();
+                                   
+                                   readFile();
                               }
                               else
                               {
-                                   client.println(difference, 3);
-                                   client.print(" in. Hg --Difference since last update <br />");
-                              }
 
-                              client.println("Barometric Pressure:  ");
-                              client.println(millibars, 1);   //Convert hPA to millbars
-                              client.println(" mb.<br />");
-                              client.println("Atmosphere:  ");
-                              client.print(atm, 2);   
-                              client.print(" Atm <br />");
-                              client.println("Altitude:  ");
-                              client.print(bme_altitude, 1);  //Convert meters to Feet
-                              client.print(" Feet<br />");
-                              //client.println("<br />");
-                              client.println("<h2>Weather Observations</h2>");
-                              client.println("<h3>" + dtStamp + "  EST </h3>\r\n");
-                              ///////////////////////////////////////////////////////////////////////////////////////////////////////////
-                              //replace xxx.xxx.xxx.xxxx:yyyy with your Public IP and Forwarded port  --Caution --know the risk ---
-                              ///////////////////////////////////////////////////////////////////////////////////////////////////////////
-                              client.println("<a href=http://xx.xxx.xxx.xxx:yyyy/LOG.TXT download>Current Week Observations</a><br />");
-                              client.println("<br />\r\n");
-                              client.println("<a href=http://xx.xxx.xxx.xxx:yyyy/SdBrowse >Collected Observations</a><br />");
-                              client.println("<br />\r\n");
-                              client.println("<a href=http://xx.xxx.xxx.xxx:yyyy/Graphs >Graphed Weather Observations</a><br />");
-                              client.println("<br />\r\n");
-                              client.println("<a href=http://xx.xxx.xxx.xxx:yyyy/README.TXT download>Server:  README</a><br />");
-                              client.println("<br />\r\n");
-                              //client.print("<H2>Client IP:  <H2>");
-                              //client.print(client.remoteIP().toString().c_str());
-                              client.println("<body />\r\n");
-                              client.println("<br />\r\n");
-                              client.println("</html>\r\n");
+                                   delay(1000);
 
-                              fileDownload = 0;
-
-                         }
-                         // Check the action to see if it was a GET request.
-                         else if (strcmp(path, "/SdBrowse") == 0)   // Respond with the path that was accessed.
-                         {
-                              fileDownload = 1;
-
-                              // send a standard http response header
-                              client.println("HTTP/1.1 200 OK");
-                              client.println("Content-Type: text/html");
-                              client.println();
-                              client.println("<!DOCTYPE HTML>");
-                              client.println("<html>\r\n");
-                              client.println("<body>\r\n");
-                              client.println("<head><title>SDBrowse</title><head />");
-                              // print all the files, use a helper to keep it clean
-                              client.println("<h2>Collected Observations</h2>");
-
-                              //////////////// Code to listFiles from martinayotte of the "ESP8266 Community Forum" ///////////////
-                              String str = String("<html><head></head>\r\n");
-
-                              if (!SPIFFS.begin())
-                              {
-                                   Serial.println("SPIFFS failed to mount !\r\n");
-                              }
-                              Dir dir = SPIFFS.openDir("/");
-                              while (dir.next())
-                              {
-                                   str += "<a href=\"";
-                                   str += dir.fileName();
-                                   str += "\">";
-                                   str += dir.fileName();
-                                   str += "</a>";
-                                   str += "    ";
-                                   str += dir.fileSize();
-                                   str += "<br>\r\n";
-                              }
-                              str += "</body></html>\r\n";
-
-                              client.print(str);
-
-                              ////////////////// End code by martinayotte //////////////////////////////////////////////////////
-                              client.println("<br /><br />\r\n");
-                              client.println("\n<a href=http://xx.xxx.xxx.xxx:yyyy/Weather    >Current Observations</a><br />");
-                              client.println("<br />\r\n");
-                              client.println("<body />\r\n");
-                              client.println("<br />\r\n");
-                              client.println("</html>\r\n");
-
-                              fileDownload = 0;
-
-                         }
-                         // Check the action to see if it was a GET request.
-                         else if (strcmp(path, "/Graphs") == 0)   // Respond with the path that was accessed.
-                         {
-                              
-                              fileDownload = 1;
-                              
-                              // First send the success response code.
-                              client.println("HTTP/1.1 200 OK");
-                              client.println("Content-Type: html");
-                              client.println("Connnection: close");
-                              client.println("Server: WEMOS D1 R2");
-                              // Send an empty line to signal start of body.
-                              client.println("");
-                              // Now send the response data.
-                              // output dynamic webpage
-                              client.println("<!DOCTYPE HTML>");
-                              client.println("<html>\r\n");
-                              client.println("<body>\r\n");
-                              client.println("<head><title>Graphed Weather Observations</title></head>");
-                              // add a meta refresh tag, so the browser pulls again every 15 seconds:
-                              //client.println("<meta http-equiv=\"refresh\" content=\"15\">");
-                              client.println("<br />\r\n");
-                              client.println("<h2>Graphed Weather Observations</h2><br />");
-                              //client.println("<framset>\r\n");
-                              client.println("<frameset rows='30%,70%' cols='33%,34%'>");
-                              client.println("<iframe width='450' height='260' 'border: 1px solid #cccccc;' src='https://thingspeak.com/channels/290421/charts/1?bgcolor=%23ffffff&color=%23d62020&dynamic=true&results=60&timescale=15&title=Temperature&type=line&xaxis=Date&yaxis=Degrees'></iframe>");
-                              client.println("<iframe width='450' height='260' 'border: 1px solid #cccccc;' src='https://thingspeak.com/channels/290421/charts/2?bgcolor=%23ffffff&color=%23d62020&dynamic=true&results=60&timescale=15&title=Humidity&type=line&xaxis=Date&yaxis=Humidity'></iframe>");
-                              client.println("<p>");
-                              client.println("<iframe width='450' height='260' 'border: 1px solid #cccccc;' src='https://thingspeak.com/channels/290421/charts/3?bgcolor=%23ffffff&color=%23d62020&dynamic=true&results=60&timescale=15&title=Barometric+Pressure&type=line&xaxis=Date&yaxis=Pressure'></iframe>");
-                              client.println("<iframe width='450' height='260' 'border: 1px solid #cccccc;' src='https://thingspeak.com/channels/290421/charts/4?bgcolor=%23ffffff&color=%23d62020&dynamic=true&results=60&timescale=15&title=Dew+Point&type=line'></iframe>");
-                              client.println("</frameset>");
-                              client.println("<br /><br />\r\n");
-                              client.println("\n<a href=http://xx.xxx.xxx.xxx:yyyy/Weather    >Current Observations</a><br />");
-                              client.println("<br />\r\n");
-                              client.println("</p>");
-                              client.println("<body />\r\n");
-                              client.println("<br />\r\n");
-                              client.println("</html>\r\n");
-                              
-                              fileDownload = 0;
-
-                         }
-                         else if((strncmp(path, "/LOG", 4) == 0) ||  (strcmp(path, "/ACCESS.TXT") == 0) || (strcmp(path, "/DIFFER.TXT") == 0)|| (strcmp(path, "/SERVER.TXT") == 0) || (strcmp(path, "/README.TXT") == 0))     // Respond with the path that was accessed.
-                         {
-
-                              fileDownload = 1;   //File download has started; used to stop log from logging during download
-
-                              char *filename;
-                              char name;
-                              strcpy( MyBuffer, path );
-                              filename = &MyBuffer[1];
-
-                              if ((strncmp(path, "/SYSTEM~1", 9) == 0) || (strncmp(path, "/ACCESS", 7) == 0))
-                              {
-
+                                   // everything else is a 404
                                    client.println("HTTP/1.1 404 Not Found");
                                    client.println("Content-Type: text/html");
                                    client.println();
@@ -760,100 +780,49 @@ void listen()   // Listen for client connection
                                    delay(250);
                                    client.println("<h2>File Not Found!</h2>\r\n");
                                    client.println("<br /><br />\r\n");
-                                   client.println("\n<a href=http://xx.xxx.xxx.xxx:yyyy/SdBrowse    >Return to SPIFFS files list</a><br />");
+                                   client.println("\n<a href=http://xxx.xxx.xxx.xxxx:yyyy/SdBrowse    >Return to SPIFFS files list</a><br />");
                               }
-                              else
-                              {
-
-                                   client.println("HTTP/1.1 200 OK");
-                                   client.println("Content-Type: text/plain");
-                                   client.println("Content-Disposition: attachment");
-                                   client.println("Content-Length:");
-                                   client.println("Connnection: close");
-                                   client.println();
-
-
-                                   readFile();
-
-                              }
-
-                         }
-                         // Check the action to see if it was a GET request.
-                         else  if(strncmp(path, "/zzzzzzz", 7) == 0)   //replace "zzzzzzz" with your choice.  Makes "ACCESS.TXT" a restricted file.
-                         {
-                              //Restricted file:  "ACCESS.TXT."  Attempted access from "Server Files:" results in
-                              //404 File not Found!
-
-                              char *filename = "/ACCESS.TXT";
-                              strcpy(MyBuffer, filename);
-
-                              // send a standard http response header
-                              client.println("HTTP/1.1 200 OK");
-                              client.println("Content-Type: text/plain");
-                              client.println("Content-Disposition: attachment");
-                              //client.println("Content-Length:");
-                              client.println();
-
-                              fileDownload = 1;   //File download has started
-
-                              wdt_reset();
-                              
-                              readFile();
+                              exit;
                          }
                          else
                          {
-
+                              // Unsupported action, respond with an HTTP 405 method not allowed error.
+                              client.println("HTTP/1.1 405 Method Not Allowed");
+                              client.println("");
                               delay(1000);
+                              Serial.println("");
+                              Serial.println("Http/1.1 405 issued");
+                              Serial.println("\n");
 
-                              // everything else is a 404
-                              client.println("HTTP/1.1 404 Not Found");
-                              client.println("Content-Type: text/html");
-                              client.println();
-                              client.println("<h2>404</h2>\r\n");
-                              delay(250);
-                              client.println("<h2>File Not Found!</h2>\r\n");
-                              client.println("<br /><br />\r\n");
-                              client.println("\n<a href=http://xx.xxx.xxx.xxx:yyyy/SdBrowse    >Return to SPIFFS files list</a><br />");
+                              digitalWrite(online, HIGH);   //turn-on online LED indicator
+
+                              accessLog();   //log for, log-on details for "Method Not Allowed," HTTP request
+
                          }
-                         exit;
                     }
-                    else
-                    {
-                         // Unsupported action, respond with an HTTP 405 method not allowed error.
-                         client.println("HTTP/1.1 405 Method Not Allowed");
-                         client.println("");
-                         delay(1000);
-                         Serial.println("");
-                         Serial.println("Http/1.1 405 issued");
-                         Serial.println("\n");
+                    // Wait a short period to make sure the response had time to send before
+                    // the connection is closed .
 
-                         digitalWrite(online, HIGH);   //turn-on online LED indicator
+                    delay(100);
 
-                         accessLog();   //log for, log-on details for "Method Not Allowed," HTTP request
+                    //Client flush buffers
+                    client.flush();
+                    // Close the connection when done.
+                    client.stop();
 
-                    }
+                    digitalWrite(online, LOW);   //turn-off online LED indicator
+
+                    Serial.println("Client closed");
+                                   
+                    setClockWithNTP();
+                    AcquisitionDone = false;
+                    
+                    delay(500);
+
                }
-               // Wait a short period to make sure the response had time to send before
-               // the connection is closed .
-
-               delay(100);
-
-               //Client flush buffers
-               client.flush();
-               // Close the connection when done.
-               client.stop();
-
-               digitalWrite(online, LOW);   //turn-off online LED indicator
-
-               Serial.println("Client closed");
-                              
-               setClockWithNTP();
-               AcquisitionDone = false;
-               
-               delay(500);
 
           }
-
+          
      }
 }
 
@@ -979,9 +948,7 @@ void readFile()
           webFile.close();
      }
 
-     fileDownload = 0;  //File download has finished; allow logging since download has completed
-
-     delay(500);
+     delayTime = 1000;
 
      MyBuffer[0] = '\0';
 
@@ -1054,7 +1021,7 @@ String getDateTime()
           SHour = (String)temp;
      }
 
-     temp = (minute1);
+     temp = (minute1);  
      if (temp < 10)
      {
           SMin = ("0" + (String)temp);
@@ -1074,11 +1041,7 @@ String getDateTime()
           SSec = (String)temp;
      }
 
-#ifdef FAHRENHEIT
      dtStamp = SMonth + '/' + SDay + '/' + SYear + " , " + SHour + ':' + SMin + ':' + SSec;
-#else
-     dtStamp = SDay + '/' + SMonth + '/' + SYear + " , " + SHour + ':' + SMin + ':' + SSec;
-#endif
 
      return (dtStamp);
 }
@@ -1131,7 +1094,7 @@ float updateDifference()  //Pressure difference for fifthteen minute interval
 }
 
 ////////////////////////////////
-void beep(unsigned char delayms)
+void beep(unsigned char delayms) 
 {
 
      // wait for a delayms ms
@@ -1170,19 +1133,15 @@ void speak()
      ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
 
      Serial.println("Sent data to Thingspeak.com\n");
-
-
-
-}
+     
+}     
 
 /////////////
 void newDay()   //Collect Data for twenty-four hours; then start a new day
 {
 
-     fileDownload = 1; 
-
      //Do file maintence on 1st day of week at appointed time from RTC.  Assign new name to "log.txt."  Create new "log.txt."
-     if ((dayOfTheWeek) == 6)
+     if ((dayofWeek) == 6)
      {
           fileStore();
      }
@@ -1207,7 +1166,6 @@ void newDay()   //Collect Data for twenty-four hours; then start a new day
           Serial.println("Date, Time, Humidity, Dew Point, Temperature, Heat Index, in. Hg., Difference, millibars, Atm, Altitude");
      }    Serial.println("\n");
 
-     fileDownload = 0;
 }
 
 ////////////////*************************
