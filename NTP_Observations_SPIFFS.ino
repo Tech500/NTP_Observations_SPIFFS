@@ -446,13 +446,15 @@ void listen()   // Listen for client connection
 {
 
      client = server.available();
+  
+     ReadDateTime();
 
      // Disable listen function prior to writing data to log file 
      if (!((((minute1) == 59)||
                ((minute1) == 14)||
                ((minute1) == 29)||
                ((minute1) == 44))
-               && ((second1) > 50)))
+               && ((second1) > 40)))
      {
           
           
